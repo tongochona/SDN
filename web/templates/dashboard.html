@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDN Monitor</title>
+  <script src="/static/chart.js"></script>
+  <style>
+    .chart-container {
+      position: relative;
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto 20px;
+    }
+    canvas { width: 100% !important; height: 300px !important; display: block; }
+    .loading { display: none; text-align: center; margin: 10px; }
+  </style>
+</head>
+
+<body>
+  <h2>🖥️ SDN Monitoring Dashboard</h2>
+  <label for="switchSelect">Chọn switch:</label>
+  <select id="switchSelect" onchange="loadAllCharts()">
+    {% for s in switches %}
+    <option value="{{ s }}">{{ s }}</option>
+    {% endfor %}
+  </select>
+  <div class="loading" id="loading">Đang tải...</div>
+
+  <!-- Existing Charts -->
+  <div class="chart-container">
+    <h3>📡 Tổng Băng Thông Toàn Mạng</h3>
+    <canvas id="networkChart"></canvas>
+  </div>
+
+  <div class="chart-container">
+    <h3>📉 Gói tin bị Drop</h3>
+    <canvas id="dropChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <h3>Port Statistics</h3>
+    <canvas id="packetsChartTx"></canvas>
+    <canvas id="packetsChartRx"></canvas>
+    <canvas id="bandwidthChartTx"></canvas>
+    <canvas id="bandwidthChartRx"></canvas>
+  </div>
+  <div class="chart-container">
+    <h3>Flow Statistics</h3>
+    <canvas id="flowChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <h3>Table Statistics</h3>
+    <canvas id="tableChart"></canvas>
+  </div>
+
+  <div class="chart-container">
+    <h3>🕳️ Sflow metric (Top Metrics)</h3>
+    <canvas id="ifInChart"></canvas>
+    <canvas id="ifOutChart"></canvas>
+    <canvas id="inDiscardChart"></canvas>
+    <canvas id="outDiscardChart"></canvas>
+    <canvas id="topDstIpChart"></canvas>
+  </div>
+
+  <script>
+    // Helper to create bar charts with custom colors
+    function createBarChart(id, label, backgroundColor, borderColor) {
+      return new Chart(document.getElementById(id), {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: [{
+            label: label,
+            data: [],
+            backgroundColor: backgroundColor,
+            borderColor: borderColor,
+            borderWidth: 1
+          }]
+        },
+        options: {
+          scales: { y: { beginAtZero: true } },
+          plugins: { legend: { display: true } }
+        }
+      });
+    }
+
+    // Helper to create line charts with custom colors
+    function createLineChart(id, label, backgroundColor, borderColor) {
+      return new Chart(document.getElementById(id), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: label,
+            data: [],
+            backgroundColor: backgroundColor,
+            borderColor: borderColor,
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 5,
+            pointHoverRadius: 7
+          }]
+        },
+        options: {
+          scales: { y: { beginAtZero: true } },
+          plugins: { legend: { display: true } }
+        }
+      });
+    }
+
+    // Chart instances with custom colors
+    const dropChart = createLineChart(
+      'dropChart',
+      'Dropped Packets',
+      'rgba(255, 99, 132, 0.5)', // Đỏ
+      'rgba(255, 99, 132, 1)'
+    );
+
+    const packetsChartTx = createLineChart(
+      'packetsChartTx',
+      'TX Packets',
+      'rgba(255, 159, 64, 0.5)', // Cam
+      'rgba(255, 159, 64, 1)'
+    );
+
+    const packetsChartRx = createLineChart(
+      'packetsChartRx',
+      'RX Packets',
+      'rgba(75, 192, 192, 0.5)', // Xanh lá
+      'rgba(75, 192, 192, 1)'
+    );
+
+    const bandwidthChartTx = createLineChart(
+      'bandwidthChartTx',
+      'TX Mbps',
+      'rgba(255, 159, 64, 0.5)', // Cam
+      'rgba(255, 159, 64, 1)'
+    );
+
+    const bandwidthChartRx = createLineChart(
+      'bandwidthChartRx',
+      'RX Mbps',
+      'rgba(75, 192, 192, 0.5)', // Xanh lá
+      'rgba(75, 192, 192, 1)'
+    );
+
+    const flowChart = createBarChart(
+      'flowChart',
+      'Flow Mbps',
+      'rgba(54, 162, 235, 0.5)', // Xanh dương
+      'rgba(54, 162, 235, 1)'
+    );
+
+    const tableChart = new Chart(document.getElementById('tableChart'), {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Lookup',
+            data: [],
+            backgroundColor: 'rgba(54, 162, 235, 0.5)', // Xanh dương
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+          },
+          {
+            label: 'Matched',
+            data: [],
+            backgroundColor: 'rgba(153, 102, 255, 0.5)', // Tím
+            borderColor: 'rgba(153, 102, 255, 1)',
+            borderWidth: 1
+          }
+        ]
+      },
+      options: { scales: { y: { beginAtZero: true } } }
+    });
+
+    const networkChart = createLineChart(
+      'networkChart',
+      'Network Mbps',
+      'rgba(54, 162, 235, 0.5)', // Xanh dương
+      'rgba(54, 162, 235, 1)'
+    );
+
+    // sFlow charts with custom colors
+    const ifInChart = createBarChart(
+      'ifInChart',
+      'Bytes In (Mbps)',
+      'rgba(75, 192, 192, 0.5)', // Xanh lá
+      'rgba(75, 192, 192, 1)'
+    );
+
+    const ifOutChart = createBarChart(
+      'ifOutChart',
+      'Bytes Out (Mbps)',
+      'rgba(255, 159, 64, 0.5)', // Cam
+      'rgba(255, 159, 64, 1)'
+    );
+
+    const inDiscardChart = createBarChart(
+      'inDiscardChart',
+      'Input Discards',
+      'rgba(255, 99, 132, 0.5)', // Đỏ
+      'rgba(255, 99, 132, 1)'
+    );
+
+    const outDiscardChart = createBarChart(
+      'outDiscardChart',
+      'Output Discards',
+      'rgba(255, 99, 132, 0.5)', // Đỏ
+      'rgba(255, 99, 132, 1)'
+    );
+
+    const topDstIpChart = createBarChart(
+      'topDstIpChart',
+      'Top Destination IPs',
+      'rgba(153, 102, 255, 0.5)', // Tím
+      'rgba(153, 102, 255, 1)'
+    );
+
+    async function updateSflowCharts() {
+      try {
+        const res = await fetch('/api/sflow_metrics');
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const data = await res.json();
+        function upd(chart, key) {
+          const arr = data[key]?.data || [];
+          if (!Array.isArray(arr)) {
+            console.error(`Invalid sFlow data for ${key}:`, data[key]);
+            return;
+          }
+          chart.data.labels = arr.map(d => d.label || '');
+          chart.data.datasets[0].data = arr.map(d => d.value || 0);
+          chart.update();
+        }
+        upd(ifInChart, 'ifinoctets');
+        upd(ifOutChart, 'ifoutoctets');
+        upd(inDiscardChart, 'ifindiscards');
+        upd(outDiscardChart, 'ifoutdiscards');
+        upd(topDstIpChart, 'nf.dstip');
+      } catch (e) {
+        console.error('Error fetching sFlow metrics:', e);
+        document.getElementById('loading').textContent = 'Lỗi khi tải dữ liệu sFlow';
+        document.getElementById('loading').style.display = 'block';
+      }
+    }
+
+    async function fetchStats(api) {
+      const dpid = document.getElementById("switchSelect").value;
+      const res = await fetch(`/api/${api}?dpid=${dpid}`);
+      return res.ok ? res.json() : [];
+    }
+
+    async function loadAllCharts() {
+      document.getElementById("loading").style.display = "block";
+      const portData = await fetchStats('port_stats');
+      const flowData = await fetchStats('flow_stats');
+      const tableData = await fetchStats('table_stats');
+      updatePortCharts(portData);
+      updateFlowChart(flowData);
+      updateTableChart(tableData);
+      document.getElementById("loading").style.display = "none";
+    }
+
+    function updatePortCharts(data) {
+      const grouped = {};
+      data.forEach(d => {
+        const ts = d.timestamp;
+        if (!grouped[ts]) grouped[ts] = { tx_packets: 0, rx_packets: 0, tx_mbps: 0, rx_mbps: 0 };
+        grouped[ts].tx_packets += d.tx_packets || 0;
+        grouped[ts].rx_packets += d.rx_packets || 0;
+        grouped[ts].tx_mbps += d.tx_mbps || 0;
+        grouped[ts].rx_mbps += d.rx_mbps || 0;
+      });
+      const ts = Object.keys(grouped).sort();
+      const labels = ts.map(t => new Date(t * 1000).toLocaleTimeString());
+      packetsChartTx.data.labels = bandwidthChartTx.data.labels = labels;
+      packetsChartTx.data.datasets[0].data = ts.map(t => grouped[t].tx_packets);
+      bandwidthChartTx.data.datasets[0].data = ts.map(t => grouped[t].tx_mbps);
+      packetsChartRx.data.labels = bandwidthChartRx.data.labels = labels;
+      packetsChartRx.data.datasets[0].data = ts.map(t => grouped[t].rx_packets);
+      bandwidthChartRx.data.datasets[0].data = ts.map(t => grouped[t].rx_mbps);
+      packetsChartTx.update();
+      bandwidthChartTx.update();
+      packetsChartRx.update();
+      bandwidthChartRx.update();
+    }
+
+    function updateFlowChart(data) {
+      flowChart.data.labels = data.map(d => d.in_port);
+      flowChart.data.datasets[0].data = data.map(d => d.mbps || 0);
+      flowChart.update();
+    }
+
+    function updateTableChart(data) {
+      tableChart.data.labels = data.map(d => d.table_id);
+      tableChart.data.datasets[0].data = data.map(d => d.lookup_count || 0);
+      tableChart.data.datasets[1].data = data.map(d => d.matched_count || 0);
+      tableChart.update();
+    }
+
+    async function updateNetworkChart() {
+      const res = await fetch("/api/all_bandwidth");
+      const data = await res.json();
+      const labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString());
+      const vals = data.map(d => d.mbps || 0);
+      const maxVal = Math.max(...vals, 1) * 1.1;
+      networkChart.options.scales.y.max = maxVal;
+      networkChart.data.labels = labels;
+      networkChart.data.datasets[0].data = vals;
+      networkChart.update();
+    }
+
+    async function updateDropChart() {
+      const res = await fetch('/api/drop_stats');
+      const data = await res.json();
+      dropChart.data.labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString());
+      dropChart.data.datasets[0].data = data.map(d => d.dropped || 0);
+      dropChart.update();
+    }
+
+    // Khởi tạo
+    if (document.getElementById("switchSelect").options.length > 0) {
+      updateNetworkChart();
+      loadAllCharts();
+      updateDropChart();
+      updateSflowCharts();
+      const interval = 10000;
+      setInterval(loadAllCharts, interval);
+      setInterval(updateNetworkChart, interval);
+      setInterval(updateDropChart, interval);
+      setInterval(updateSflowCharts, interval);
+    } else {
+      document.getElementById("loading").style.display = "block";
+      document.getElementById("loading").textContent = "Không có switch nào khả dụng.";
+    }
+  </script>
+  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'93d7c8355f85bf9c',t:'MTc0Njg2Mjc1OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
+</body>
+</html>

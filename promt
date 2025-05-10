@@ -1,0 +1,2 @@
+sudo ovs-ofctl add-flow br0 "priority=100,actions=drop"
+
