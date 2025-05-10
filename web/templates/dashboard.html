@@ -55,15 +55,53 @@
   </div>
 
   <div class="chart-container">
-    <h3>🕳️ Sflow metric (Top Metrics)</h3>
+    <h3>🕳️ sFlow Metrics</h3>
     <canvas id="ifInChart"></canvas>
     <canvas id="ifOutChart"></canvas>
     <canvas id="inDiscardChart"></canvas>
     <canvas id="outDiscardChart"></canvas>
-    <canvas id="topDstIpChart"></canvas>
   </div>
 
   <script>
+    // Helper to create line charts with custom colors
+    function createLineChart(id, label, backgroundColor, borderColor) {
+      return new Chart(document.getElementById(id), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: label,
+            data: [],
+            backgroundColor: backgroundColor,
+            borderColor: borderColor,
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 5,
+            pointHoverRadius: 7
+          }]
+        },
+        options: {
+          scales: {
+            x: { title: { display: true, text: 'Time (ms)' } },
+            y: { beginAtZero: true, title: { display: true, text: label } }
+          },
+          plugins: {
+            legend: { display: true },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const dataset = context.dataset;
+                  const index = context.dataIndex;
+                  const value = dataset.data[index];
+                  return `${dataset.label}: ${value}`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
     // Helper to create bar charts with custom colors
     function createBarChart(id, label, backgroundColor, borderColor) {
       return new Chart(document.getElementById(id), {
@@ -85,73 +123,13 @@
       });
     }
 
-    // Helper to create line charts with custom colors
-    function createLineChart(id, label, backgroundColor, borderColor) {
-      return new Chart(document.getElementById(id), {
-        type: 'line',
-        data: {
-          labels: [],
-          datasets: [{
-            label: label,
-            data: [],
-            backgroundColor: backgroundColor,
-            borderColor: borderColor,
-            borderWidth: 2,
-            fill: false,
-            pointRadius: 5,
-            pointHoverRadius: 7
-          }]
-        },
-        options: {
-          scales: { y: { beginAtZero: true } },
-          plugins: { legend: { display: true } }
-        }
-      });
-    }
-
     // Chart instances with custom colors
-    const dropChart = createLineChart(
-      'dropChart',
-      'Dropped Packets',
-      'rgba(255, 99, 132, 0.5)', // Đỏ
-      'rgba(255, 99, 132, 1)'
-    );
-
-    const packetsChartTx = createLineChart(
-      'packetsChartTx',
-      'TX Packets',
-      'rgba(255, 159, 64, 0.5)', // Cam
-      'rgba(255, 159, 64, 1)'
-    );
-
-    const packetsChartRx = createLineChart(
-      'packetsChartRx',
-      'RX Packets',
-      'rgba(75, 192, 192, 0.5)', // Xanh lá
-      'rgba(75, 192, 192, 1)'
-    );
-
-    const bandwidthChartTx = createLineChart(
-      'bandwidthChartTx',
-      'TX Mbps',
-      'rgba(255, 159, 64, 0.5)', // Cam
-      'rgba(255, 159, 64, 1)'
-    );
-
-    const bandwidthChartRx = createLineChart(
-      'bandwidthChartRx',
-      'RX Mbps',
-      'rgba(75, 192, 192, 0.5)', // Xanh lá
-      'rgba(75, 192, 192, 1)'
-    );
-
-    const flowChart = createBarChart(
-      'flowChart',
-      'Flow Mbps',
-      'rgba(54, 162, 235, 0.5)', // Xanh dương
-      'rgba(54, 162, 235, 1)'
-    );
-
+    const dropChart = createLineChart('dropChart', 'Dropped Packets', 'rgba(255, 99, 132, 0.5)', 'rgba(255, 99, 132, 1)');
+    const packetsChartTx = createLineChart('packetsChartTx', 'TX Packets', 'rgba(255, 159, 64, 0.5)', 'rgba(255, 159, 64, 1)');
+    const packetsChartRx = createLineChart('packetsChartRx', 'RX Packets', 'rgba(75, 192, 192, 0.5)', 'rgba(75, 192, 192, 1)');
+    const bandwidthChartTx = createLineChart('bandwidthChartTx', 'TX Mbps', 'rgba(255, 159, 64, 0.5)', 'rgba(255, 159, 64, 1)');
+    const bandwidthChartRx = createLineChart('bandwidthChartRx', 'RX Mbps', 'rgba(75, 192, 192, 0.5)', 'rgba(75, 192, 192, 1)');
+    const flowChart = createBarChart('flowChart', 'Flow Mbps', 'rgba(54, 162, 235, 0.5)', 'rgba(54, 162, 235, 1)');
     const tableChart = new Chart(document.getElementById('tableChart'), {
       type: 'bar',
       data: {
@@ -160,14 +138,14 @@
           {
             label: 'Lookup',
             data: [],
-            backgroundColor: 'rgba(54, 162, 235, 0.5)', // Xanh dương
+            backgroundColor: 'rgba(54, 162, 235, 0.5)',
             borderColor: 'rgba(54, 162, 235, 1)',
             borderWidth: 1
           },
           {
             label: 'Matched',
             data: [],
-            backgroundColor: 'rgba(153, 102, 255, 0.5)', // Tím
+            backgroundColor: 'rgba(153, 102, 255, 0.5)',
             borderColor: 'rgba(153, 102, 255, 1)',
             borderWidth: 1
           }
@@ -175,49 +153,13 @@
       },
       options: { scales: { y: { beginAtZero: true } } }
     });
-
-    const networkChart = createLineChart(
-      'networkChart',
-      'Network Mbps',
-      'rgba(54, 162, 235, 0.5)', // Xanh dương
-      'rgba(54, 162, 235, 1)'
-    );
+    const networkChart = createLineChart('networkChart', 'Network Mbps', 'rgba(54, 162, 235, 0.5)', 'rgba(54, 162, 235, 1)');
 
     // sFlow charts with custom colors
-    const ifInChart = createBarChart(
-      'ifInChart',
-      'Bytes In (Mbps)',
-      'rgba(75, 192, 192, 0.5)', // Xanh lá
-      'rgba(75, 192, 192, 1)'
-    );
-
-    const ifOutChart = createBarChart(
-      'ifOutChart',
-      'Bytes Out (Mbps)',
-      'rgba(255, 159, 64, 0.5)', // Cam
-      'rgba(255, 159, 64, 1)'
-    );
-
-    const inDiscardChart = createBarChart(
-      'inDiscardChart',
-      'Input Discards',
-      'rgba(255, 99, 132, 0.5)', // Đỏ
-      'rgba(255, 99, 132, 1)'
-    );
-
-    const outDiscardChart = createBarChart(
-      'outDiscardChart',
-      'Output Discards',
-      'rgba(255, 99, 132, 0.5)', // Đỏ
-      'rgba(255, 99, 132, 1)'
-    );
-
-    const topDstIpChart = createBarChart(
-      'topDstIpChart',
-      'Top Destination IPs',
-      'rgba(153, 102, 255, 0.5)', // Tím
-      'rgba(153, 102, 255, 1)'
-    );
+    const ifInChart = createLineChart('ifInChart', 'Bytes In (Mbps)', 'rgba(75, 192, 192, 0.5)', 'rgba(75, 192, 192, 1)');
+    const ifOutChart = createLineChart('ifOutChart', 'Bytes Out (Mbps)', 'rgba(255, 159, 64, 0.5)', 'rgba(255, 159, 64, 1)');
+    const inDiscardChart = createLineChart('inDiscardChart', 'Input Discards', 'rgba(255, 99, 132, 0.5)', 'rgba(255, 99, 132, 1)');
+    const outDiscardChart = createLineChart('outDiscardChart', 'Output Discards', 'rgba(255, 99, 132, 0.5)', 'rgba(255, 99, 132, 1)');
 
     async function updateSflowCharts() {
       try {
@@ -226,19 +168,22 @@
         const data = await res.json();
         function upd(chart, key) {
           const arr = data[key]?.data || [];
-          if (!Array.isArray(arr)) {
-            console.error(`Invalid sFlow data for ${key}:`, data[key]);
+          if (!Array.isArray(arr) || arr.length === 0) {
+            console.warn(`No data for ${key}, displaying last known point or skipping.`);
             return;
           }
-          chart.data.labels = arr.map(d => d.label || '');
+          arr.sort((a, b) => (a.lastUpdate || 0) - (b.lastUpdate || 0));
+          chart.data.labels = arr.map(d => d.lastUpdate || 0);
           chart.data.datasets[0].data = arr.map(d => d.value || 0);
           chart.update();
+          if (arr.length === 1) {
+            console.warn(`${key} has only one data point at ${arr[0].lastUpdate}`);
+          }
         }
         upd(ifInChart, 'ifinoctets');
         upd(ifOutChart, 'ifoutoctets');
         upd(inDiscardChart, 'ifindiscards');
         upd(outDiscardChart, 'ifoutdiscards');
-        upd(topDstIpChart, 'nf.dstip');
       } catch (e) {
         console.error('Error fetching sFlow metrics:', e);
         document.getElementById('loading').textContent = 'Lỗi khi tải dữ liệu sFlow';
@@ -336,6 +281,5 @@
       document.getElementById("loading").textContent = "Không có switch nào khả dụng.";
     }
   </script>
-  <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'93d7c8355f85bf9c',t:'MTc0Njg2Mjc1OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </body>
 </html>

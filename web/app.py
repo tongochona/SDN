@@ -4,6 +4,7 @@ import os
 from collections import defaultdict
 import logging
 import requests
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -12,6 +13,9 @@ CSV_DIR = "SDN/web/data"
 # Thiết lập logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Lưu trữ dữ liệu sFlow theo thời gian (danh sách tạm thời, có thể thay bằng file hoặc cơ sở dữ liệu)
+sflow_data_store = defaultdict(list)
 
 @app.route("/")
 def index():
@@ -109,36 +113,36 @@ def drop_stats():
 def sflow_blackhole_metrics():
     try:
         metrics = {
-            "ifinoctets": "Bytes In",
-            "ifoutoctets": "Bytes Out",
+            "ifinoctets": "Bytes In (Mbps)",
+            "ifoutoctets": "Bytes Out (Mbps)",
             "ifindiscards": "Input Discards",
-            "ifoutdiscards": "Output Discards",
-            "nf.dstip": "Top Destination IPs",
-            "nf.srcip": "Top Source IPs"
+            "ifoutdiscards": "Output Discards"
         }
         results = {}
         for metric, label in metrics.items():
             url = f"http://127.0.0.1:8008/metric/ALL/{metric}/json"
             try:
                 resp = requests.get(url, timeout=5)
-                resp.raise_for_status()  # Ném lỗi nếu status code không phải 200
+                resp.raise_for_status()
                 values = resp.json()
                 processed = []
                 if isinstance(values, list):
-                    processed = [
-                        {
-                            "label": f"{v.get('agent', 'unknown')}:{v.get('dataSource', 'unknown')}",
-                            "value": max(0, round(v.get("metricValue", 0), 2))
-                        }
-                        for v in values
-                        if isinstance(v, dict)
-                    ]
+                    for v in values:
+                        if isinstance(v, dict) and metric in v.get("metricName", ""):
+                            data_point = {
+                                "lastUpdate": v.get("lastUpdate", 0),
+                                "value": max(0, round(v.get("metricValue", 0), 2))
+                            }
+                            sflow_data_store[metric].append(data_point)
+                            # Giới hạn số lượng bản ghi (20 điểm gần nhất)
+                            sflow_data_store[metric] = sflow_data_store[metric][-20:]
+                            processed.extend(sflow_data_store[metric])
                 else:
                     logger.warning(f"Unexpected sFlow data format for {metric}: {values}")
-                results[metric] = {"name": label, "data": processed[:10]}
+                results[metric] = {"name": label, "data": processed}
             except requests.exceptions.RequestException as e:
                 logger.error(f"Failed to fetch sFlow metric {metric}: {e}")
-                results[metric] = {"name": label, "data": []}
+                results[metric] = {"name": label, "data": sflow_data_store[metric][-20:] if sflow_data_store[metric] else []}
         return jsonify(results)
     except Exception as e:
         logger.error(f"Error fetching blackhole metrics: {e}")
